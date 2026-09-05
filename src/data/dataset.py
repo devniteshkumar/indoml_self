@@ -102,17 +102,20 @@ class VaaniWindowedDataset(Dataset):
         start_frame = int(window_info['w_start'] * self.sample_rate)
         num_frames = int((window_info['w_end'] - window_info['w_start']) * self.sample_rate)
         
-        audio_source = window_info['audio_path']
-        if not audio_source and window_info['audio_bytes']:
+        # CRITICAL FIX: Prioritize bytes over the path string for Hugging Face Parquet datasets
+        if window_info.get('audio_bytes') is not None:
             audio_source = io.BytesIO(window_info['audio_bytes'])
+        else:
+            audio_source = window_info['audio_path']
             
         try:
-            waveform, sr = torchaudio.load(audio_source, frame_offset=start_frame, num_frames=num_frames)
+            # We explicitly specify format="wav" to help torchaudio decode from memory
+            waveform, sr = torchaudio.load(audio_source, frame_offset=start_frame, num_frames=num_frames, format="wav")
         except Exception:
             # Fallback if the backend does not support frame_offset on file-like objects
             if hasattr(audio_source, 'seek'):
                 audio_source.seek(0)
-            waveform, sr = torchaudio.load(audio_source)
+            waveform, sr = torchaudio.load(audio_source, format="wav")
             waveform = waveform[:, start_frame:start_frame+num_frames]
         
         if sr != self.sample_rate:
